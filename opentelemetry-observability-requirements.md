@@ -2,169 +2,169 @@
 
 > **Status**: Draft v2
 > **Date**: 2026-02-17
-> **Scope**: Observability-стек на базе OpenTelemetry для гибридной платформы (OpenShift + Linux VM, JVM-сервисы, Oracle DB)
+> **Scope**: OpenTelemetry-based observability stack for a hybrid platform (OpenShift + Linux VMs, JVM services, Oracle DB)
 
 ---
 
-## 1. Контекст и текущее состояние
+## 1. Context and Current State
 
-### 1.1 Инфраструктура
+### 1.1 Infrastructure
 
-| Компонент | Описание |
+| Component | Description |
 |---|---|
-| **Linux VM** | Несколько десятков виртуальных машин Linux |
-| **OpenShift** | Несколько десятков namespaces с Java/Kotlin приложениями |
-| **Базы данных** | Oracle DB |
-| **Языки/рантаймы** | Java, Kotlin (JVM-стек) |
-| **Межсервисные транспорты** | REST (HTTP), gRPC, message brokers, возможно GraphQL |
+| **Linux VMs** | Several dozen Linux virtual machines |
+| **OpenShift** | Several dozen namespaces running Java/Kotlin applications |
+| **Databases** | Oracle DB |
+| **Languages/Runtimes** | Java, Kotlin (JVM stack) |
+| **Inter-service transports** | REST (HTTP), gRPC, message brokers, possibly GraphQL |
 
-### 1.2 Существующие Prometheus-экспортёры
+### 1.2 Existing Prometheus Exporters
 
-Уже используются или требуют интеграции:
+Already in use or requiring integration:
 
-| Экспортёр | Среда | Назначение |
+| Exporter | Environment | Purpose |
 |---|---|---|
-| **node_exporter** | Linux VM | Метрики ОС: CPU, RAM, disk, network, filesystem |
-| **ssl_exporter** | Linux VM | Мониторинг сроков TLS-сертификатов, валидности цепочек |
-| **process_exporter** | Linux VM | Метрики отдельных процессов: CPU, RSS, open FDs, threads |
-| **oracledb_exporter** | Oracle DB | Метрики БД: sessions, tablespaces, wait events, query perf |
-| **blackbox_exporter** | Сетевой уровень | Probe-мониторинг: HTTP, TCP, ICMP, DNS — доступность и latency эндпоинтов |
+| **node_exporter** | Linux VM | OS metrics: CPU, RAM, disk, network, filesystem |
+| **ssl_exporter** | Linux VM | TLS certificate expiry monitoring, chain validity |
+| **process_exporter** | Linux VM | Per-process metrics: CPU, RSS, open FDs, threads |
+| **oracledb_exporter** | Oracle DB | Database metrics: sessions, tablespaces, wait events, query performance |
+| **blackbox_exporter** | Network level | Probe monitoring: HTTP, TCP, ICMP, DNS — endpoint availability and latency |
 
-### 1.3 Существующий мониторинг
+### 1.3 Current Monitoring
 
-| Компонент | Текущее состояние | Стратегия |
+| Component | Current State | Strategy |
 |---|---|---|
-| **Prometheus + Grafana** | Используется для метрик (экспортёры выше) | Миграция на VictoriaMetrics как long-term storage |
-| **Splunk Enterprise** | Используется для логов | Сосуществование, постепенный переход на OpenSearch |
-| Distributed tracing | Отсутствует | Новое внедрение через OTel |
-| Continuous profiling | Отсутствует | Фаза 2+ |
+| **Prometheus + Grafana** | Used for metrics (exporters listed above) | Migration to VictoriaMetrics as long-term storage |
+| **Splunk Enterprise** | Used for logs | Coexistence, gradual transition to OpenSearch |
+| Distributed tracing | Not implemented | New deployment via OTel |
+| Continuous profiling | Not implemented | Phase 2+ |
 
 ---
 
-## 2. Сигналы телеметрии
+## 2. Telemetry Signals
 
 ### 2.1 Metrics
 
-**Приоритет**: Высокий
+**Priority**: High
 
-#### 2.1.1 Инфраструктурные метрики (VM)
+#### 2.1.1 Infrastructure Metrics (VM)
 
-- [ ] Сбор метрик из существующих экспортёров через OTel Collector (`prometheus` receiver)
-  - `node_exporter` — scrape с каждой VM
-  - `ssl_exporter` — scrape централизованно или с каждой VM
-  - `process_exporter` — scrape с каждой VM
-- [ ] Экспорт в VictoriaMetrics через `prometheusremotewrite` exporter
-- [ ] Сохранение совместимости с существующими Grafana-дашбордами и recording rules
+- [ ] Collect metrics from existing exporters via OTel Collector (`prometheus` receiver)
+  - `node_exporter` — scrape from each VM
+  - `ssl_exporter` — scrape centrally or from each VM
+  - `process_exporter` — scrape from each VM
+- [ ] Export to VictoriaMetrics via `prometheusremotewrite` exporter
+- [ ] Maintain compatibility with existing Grafana dashboards and recording rules
 
-#### 2.1.2 Метрики баз данных
+#### 2.1.2 Database Metrics
 
 - [ ] `oracledb_exporter` → OTel Collector (`prometheus` receiver) → VictoriaMetrics
-- [ ] Мониторинг: sessions, tablespace usage, wait events, top SQL, connection pool
-- [ ] Алерты: tablespace > 80%, blocked sessions, long-running queries
+- [ ] Monitoring: sessions, tablespace usage, wait events, top SQL, connection pool
+- [ ] Alerts: tablespace > 80%, blocked sessions, long-running queries
 
-#### 2.1.3 Probe-мониторинг
+#### 2.1.3 Probe Monitoring
 
 - [ ] `blackbox_exporter` → OTel Collector → VictoriaMetrics
-- [ ] HTTP-пробы для ключевых эндпоинтов (health checks, API endpoints)
-- [ ] TCP-пробы для инфраструктурных сервисов (Oracle listener, Kafka brokers)
-- [ ] SSL certificate expiry alerting (дополнительно к ssl_exporter)
+- [ ] HTTP probes for key endpoints (health checks, API endpoints)
+- [ ] TCP probes for infrastructure services (Oracle listener, Kafka brokers)
+- [ ] SSL certificate expiry alerting (in addition to ssl_exporter)
 
-#### 2.1.4 Метрики приложений (OpenShift)
+#### 2.1.4 Application Metrics (OpenShift)
 
-- [ ] JVM runtime-метрики через OTel Java Agent: heap, GC, threads, class loading
-- [ ] Бизнес-метрики через OTel Metrics API (counters, histograms, gauges)
-- [ ] RED-метрики (Rate, Errors, Duration) — автоматически из span-метрик (spanmetrics connector)
-- [ ] OpenShift-специфичные метрики: kube-state-metrics, kubelet metrics
+- [ ] JVM runtime metrics via OTel Java Agent: heap, GC, threads, class loading
+- [ ] Business metrics via OTel Metrics API (counters, histograms, gauges)
+- [ ] RED metrics (Rate, Errors, Duration) — automatically derived from span metrics (spanmetrics connector)
+- [ ] OpenShift-specific metrics: kube-state-metrics, kubelet metrics
 
-#### 2.1.5 Ключевые вопросы
+#### 2.1.5 Key Questions
 
-- [ ] Какие recording/alerting rules уже определены в текущем Prometheus? Нужна миграция?
-- [ ] Нужен ли federation или vmagent для сбора метрик из OpenShift built-in monitoring?
-- [ ] Service discovery для экспортёров на VM — DNS-based, file-based, или Consul?
+- [ ] Which recording/alerting rules are already defined in current Prometheus? Do they need migration?
+- [ ] Is federation or vmagent needed for collecting metrics from OpenShift built-in monitoring?
+- [ ] Service discovery for VM exporters — DNS-based, file-based, or Consul?
 
 ### 2.2 Distributed Traces
 
-**Приоритет**: Высокий
+**Priority**: High
 
-- **Требования**:
-  - [ ] Автоматическая инструментация JVM-сервисов в OpenShift (OTel Java Agent)
-  - [ ] Пропагация контекста через все транспорты: HTTP, gRPC, Kafka/message broker headers
-  - [ ] Корреляция trace ↔ logs через `trace_id`/`span_id` (MDC injection в Log4j2/Logback)
-  - [ ] Поддержка sampling-стратегий: head-based и tail-based sampling
-  - [ ] Визуализация trace waterfall, service map, dependency graph
+- **Requirements**:
+  - [ ] Automatic instrumentation of JVM services in OpenShift (OTel Java Agent)
+  - [ ] Context propagation across all transports: HTTP, gRPC, Kafka/message broker headers
+  - [ ] Trace ↔ log correlation via `trace_id`/`span_id` (MDC injection in Log4j2/Logback)
+  - [ ] Support for sampling strategies: head-based and tail-based sampling
+  - [ ] Trace waterfall visualization, service map, dependency graph
 
-- **Ключевые вопросы**:
-  - [ ] Формат пропагации контекста: W3C TraceContext (рекомендуется) или B3 (если есть legacy)?
-  - [ ] Tail-based sampling на фазе 1 или достаточно head-based?
-  - [ ] Целевой sampling rate для production (рекомендация: 1–10% head-based + 100% для ошибок)
+- **Key Questions**:
+  - [ ] Context propagation format: W3C TraceContext (recommended) or B3 (if legacy exists)?
+  - [ ] Tail-based sampling in phase 1 or is head-based sufficient?
+  - [ ] Target sampling rate for production (recommendation: 1–10% head-based + 100% for errors)
 
 ### 2.3 Logs
 
-**Приоритет**: Средний
+**Priority**: Medium
 
-- **Требования**:
-  - [ ] Инъекция `trace_id`, `span_id` в логи JVM-приложений (MDC)
-  - [ ] Сбор логов из OpenShift через OTel Collector (filelog receiver / k8s container logs)
-  - [ ] Сбор логов с VM через OTel Collector (filelog receiver)
-  - [ ] Структурированное логирование (JSON) для новых сервисов
-  - [ ] Экспорт в OpenSearch для хранения и полнотекстового поиска
-  - [ ] Корреляция logs ↔ traces в Grafana (через OpenSearch data source + trace-to-logs)
+- **Requirements**:
+  - [ ] Inject `trace_id`, `span_id` into JVM application logs (MDC)
+  - [ ] Collect logs from OpenShift via OTel Collector (filelog receiver / k8s container logs)
+  - [ ] Collect logs from VMs via OTel Collector (filelog receiver)
+  - [ ] Structured logging (JSON) for new services
+  - [ ] Export to OpenSearch for storage and full-text search
+  - [ ] Log ↔ trace correlation in Grafana (via OpenSearch data source + trace-to-logs)
 
-- **Ключевые вопросы**:
-  - [ ] Стратегия миграции с Splunk на OpenSearch — big bang или постепенно по сервисам?
-  - [ ] Нужен ли dual-write (Splunk + OpenSearch) в переходный период?
-  - [ ] Унификация формата логов: VM (syslog/файлы) vs. OpenShift (stdout/stderr)
+- **Key Questions**:
+  - [ ] Migration strategy from Splunk to OpenSearch — big bang or gradual per-service rollout?
+  - [ ] Is dual-write (Splunk + OpenSearch) needed during transition?
+  - [ ] Log format unification: VM (syslog/files) vs. OpenShift (stdout/stderr)
 
 ### 2.4 Continuous Profiling
 
-**Приоритет**: Низкий (фаза 2+, но архитектуру заложить сейчас)
+**Priority**: Low (phase 2+, but architecture should be planned now)
 
-- **Требования**:
-  - [ ] CPU и allocation profiling для JVM-сервисов
-  - [ ] Корреляция профилей с traces (span → profile)
-  - [ ] Минимальный overhead в production (< 1% CPU)
+- **Requirements**:
+  - [ ] CPU and allocation profiling for JVM services
+  - [ ] Profile ↔ trace correlation (span → profile)
+  - [ ] Minimal production overhead (< 1% CPU)
 
-- **Ключевые вопросы**:
-  - [ ] Pyroscope (Grafana) vs. async-profiler + custom?
-  - [ ] На каком этапе внедрять — после стабилизации traces + metrics?
+- **Key Questions**:
+  - [ ] Pyroscope (Grafana) vs. async-profiler + custom solution?
+  - [ ] When to implement — only after traces + metrics are stable?
 
 ---
 
-## 3. Архитектура сбора данных (OTel Collector)
+## 3. Data Collection Architecture (OTel Collector)
 
-### 3.1 Deployment-паттерны
+### 3.1 Deployment Patterns
 
-| Среда | Паттерн | Описание |
+| Environment | Pattern | Description |
 |---|---|---|
-| **OpenShift** | DaemonSet (agent) + Deployment (gateway) | Agent на каждом узле, gateway для агрегации и маршрутизации |
-| **Linux VM** | Standalone agent (systemd) | OTel Collector как systemd-сервис на каждой машине |
+| **OpenShift** | DaemonSet (agent) + Deployment (gateway) | Agent on each node, gateway for aggregation and routing |
+| **Linux VM** | Standalone agent (systemd) | OTel Collector as a systemd service on each machine |
 
-### 3.2 Централизованное управление конфигурацией (OpAMP)
+### 3.2 Centralized Configuration Management (OpAMP)
 
-**Ключевое требование**: Конфигурация всех Collector-инстансов управляется централизованно через протокол **OpAMP** (Open Agent Management Protocol).
+**Key Requirement**: All Collector instances are managed centrally via the **OpAMP** (Open Agent Management Protocol) protocol.
 
-- [ ] **OpAMP Server**: центральный компонент для управления конфигурациями
-  - Хранение и версионирование конфигураций Collector
-  - Push обновлений конфигурации на агенты без перезапуска
-  - Мониторинг статуса всех агентов (health, version, effective config)
-- [ ] **OpAMP Supervisor** на каждом Collector:
-  - Приём обновлений конфигурации от OpAMP Server
-  - Локальное применение конфигурации с graceful reload
-  - Отчёт о статусе и effective config обратно на сервер
-- [ ] **Группировка агентов**:
-  - По среде: `openshift-agent`, `openshift-gateway`, `vm-agent`
-  - По функции: `metrics-pipeline`, `traces-pipeline`, `logs-pipeline`
-  - По окружению: `prod`, `staging`, `dev`
-- [ ] **Rollout-стратегия**: canary-обновления конфигурации (сначала 1 агент → группа → все)
+- [ ] **OpAMP Server**: central component for configuration management
+  - Storage and versioning of Collector configurations
+  - Push configuration updates to agents without restart
+  - Monitor status of all agents (health, version, effective config)
+- [ ] **OpAMP Supervisor** on each Collector:
+  - Receive configuration updates from OpAMP Server
+  - Apply configuration locally with graceful reload
+  - Report status and effective config back to server
+- [ ] **Agent grouping**:
+  - By environment type: `openshift-agent`, `openshift-gateway`, `vm-agent`
+  - By function: `metrics-pipeline`, `traces-pipeline`, `logs-pipeline`
+  - By deployment environment: `prod`, `staging`, `dev`
+- [ ] **Rollout strategy**: canary configuration updates (single agent → group → all)
 
-#### Ключевые вопросы (OpAMP)
+#### Key Questions (OpAMP)
 
-- [ ] Какой OpAMP-сервер использовать? (BindPlane OP — наиболее зрелый, OpAMP-go reference, custom)
-- [ ] Нужен ли UI для управления конфигурациями или достаточно API + GitOps?
-- [ ] Как обеспечить fallback при недоступности OpAMP Server? (локальная конфигурация как fallback)
-- [ ] Интеграция OpAMP с существующей системой CI/CD (конфигурации как код в git)?
+- [ ] Which OpAMP server to use? (BindPlane OP — most mature, OpAMP-go reference, custom)
+- [ ] Is a UI needed for configuration management or is API + GitOps sufficient?
+- [ ] How to ensure fallback when OpAMP Server is unavailable? (local config as fallback)
+- [ ] OpAMP integration with existing CI/CD system (configurations as code in git)?
 
-### 3.3 Пайплайн Collector
+### 3.3 Collector Pipeline
 
 ```
 Receivers → Processors → Connectors → Exporters
@@ -176,15 +176,15 @@ VM Agent pipeline:
 Receivers:
   - prometheus         ← scrape node_exporter, ssl_exporter,
                          process_exporter, oracledb_exporter
-  - filelog            ← логи приложений и системные логи
-  - hostmetrics        ← дополнительные метрики хоста
+  - filelog            ← application and system logs
+  - hostmetrics        ← additional host metrics
 
 Processors:
-  - memory_limiter     ← защита от OOM
-  - batch              ← группировка для эффективной отправки
-  - attributes         ← обогащение: environment, host, datacenter
-  - filter             ← фильтрация ненужных метрик
-  - transform          ← PII masking в логах
+  - memory_limiter     ← OOM protection
+  - batch              ← batching for efficient export
+  - attributes         ← enrichment: environment, host, datacenter
+  - filter             ← filter out unnecessary metrics
+  - transform          ← PII masking in logs
 
 Exporters:
   - prometheusremotewrite → VictoriaMetrics (metrics)
@@ -195,13 +195,13 @@ OpenShift Agent pipeline (DaemonSet):
 ═══════════════════════════════════════════════════════
 
 Receivers:
-  - otlp (gRPC + HTTP) ← от Java Agent в подах
+  - otlp (gRPC + HTTP) ← from Java Agent in pods
   - filelog            ← container stdout/stderr logs
   - k8s_events         ← Kubernetes events
 
 Processors:
   - memory_limiter
-  - k8sattributes      ← обогащение pod/namespace/deployment metadata
+  - k8sattributes      ← enrich with pod/namespace/deployment metadata
   - batch
   - transform          ← PII masking
 
@@ -213,111 +213,111 @@ OpenShift Gateway pipeline (Deployment):
 ═══════════════════════════════════════════════════════
 
 Receivers:
-  - otlp (gRPC + HTTP) ← от agents
+  - otlp (gRPC + HTTP) ← from agents
   - prometheus         ← scrape blackbox_exporter, kube-state-metrics
 
 Connectors:
-  - spanmetrics        ← генерация RED-метрик из spans
+  - spanmetrics        ← generate RED metrics from spans
 
 Processors:
   - memory_limiter
   - batch
-  - tail_sampling      ← sampling по error status, latency, service
-  - attributes         ← нормализация атрибутов
+  - tail_sampling      ← sampling by error status, latency, service
+  - attributes         ← attribute normalization
   - transform          ← PII masking
 
 Exporters:
   - prometheusremotewrite → VictoriaMetrics (metrics + spanmetrics)
-  - otlphttp              → Tempo или Jaeger (traces)
+  - otlphttp              → Tempo or Jaeger (traces)
   - otlphttp              → OpenSearch (logs)
 ```
 
-### 3.4 Требования к Collector
+### 3.4 Collector Requirements
 
-- [ ] Единый бинарник Collector для OpenShift и VM (один дистрибутив, разные конфигурации через OpAMP)
-- [ ] Отказоустойчивость gateway: минимум 2 реплики, load balancing
-- [ ] Backpressure и retry при недоступности бэкендов
-- [ ] Persistent queue для буферизации при кратковременных сбоях бэкендов
-- [ ] Resource limits: CPU и memory ограничения (особенно на DaemonSet)
-- [ ] Self-monitoring: метрики самого Collector (queue size, dropped data, export errors) → VictoriaMetrics
+- [ ] Single Collector binary for OpenShift and VM (one distribution, different configs via OpAMP)
+- [ ] Gateway high availability: minimum 2 replicas, load balancing
+- [ ] Backpressure and retry on backend unavailability
+- [ ] Persistent queue for buffering during transient backend failures
+- [ ] Resource limits: CPU and memory constraints (especially on DaemonSet)
+- [ ] Self-monitoring: Collector's own metrics (queue size, dropped data, export errors) → VictoriaMetrics
 
-### 3.5 Ключевые вопросы
+### 3.5 Key Questions
 
-- [ ] Дистрибутив: `otelcol-contrib` (всё включено) или custom build (минимальный набор компонентов)?
-- [ ] Нужен ли OpenTelemetry Operator для OpenShift (auto-injection Java Agent)?
-- [ ] Как обеспечить service discovery для экспортёров на VM (file_sd, DNS-SD, Consul)?
+- [ ] Distribution: `otelcol-contrib` (batteries included) or custom build (minimal component set)?
+- [ ] Is OpenTelemetry Operator needed for OpenShift (auto-injection of Java Agent)?
+- [ ] How to handle service discovery for VM exporters (file_sd, DNS-SD, Consul)?
 
 ---
 
-## 4. Бэкенды хранения (Self-Hosted, OSS)
+## 4. Storage Backends (Self-Hosted, OSS)
 
-### 4.1 Целевой стек
+### 4.1 Target Stack
 
-| Сигнал | Бэкенд | Обоснование | Визуализация |
+| Signal | Backend | Rationale | Visualization |
 |---|---|---|---|
-| **Metrics** | **VictoriaMetrics** | Высокая производительность, совместимость с PromQL, long-term storage, compression | Grafana |
-| **Traces** | **Tempo** или **Jaeger** | OSS, интеграция с Grafana; Tempo — object storage native, Jaeger — mature | Grafana |
-| **Logs** | **OpenSearch** | Полнотекстовый поиск, аналитика, Splunk-замена; зрелая экосистема | OpenSearch Dashboards + Grafana |
-| **Profiles** | **Pyroscope** (фаза 2) | Grafana-интеграция, поддержка JVM, корреляция с traces | Grafana |
+| **Metrics** | **VictoriaMetrics** | High performance, PromQL compatibility, long-term storage, compression | Grafana |
+| **Traces** | **Tempo** or **Jaeger** | OSS, Grafana integration; Tempo — object storage native, Jaeger — mature | Grafana |
+| **Logs** | **OpenSearch** | Full-text search, analytics, Splunk replacement; mature ecosystem | OpenSearch Dashboards + Grafana |
+| **Profiles** | **Pyroscope** (phase 2) | Grafana integration, JVM support, trace correlation | Grafana |
 
-### 4.2 VictoriaMetrics — архитектура
+### 4.2 VictoriaMetrics — Architecture
 
-- [ ] **Режим деплоя**: single-node или cluster (зависит от объёма)
-  - Single-node: до ~1M active time series
-  - Cluster (vminsert + vmselect + vmstorage): свыше 1M series, HA, горизонтальное масштабирование
-- [ ] Приём данных: Prometheus remote_write от OTel Collector
-- [ ] Совместимость: PromQL-запросы из Grafana, существующие дашборды работают без изменений
-- [ ] vmalert для rule evaluation (recording rules + alerting rules) → Alertmanager
-- [ ] vmagent как опциональный компонент для scrape (если нужен pull с VM без OTel Collector)
+- [ ] **Deployment mode**: single-node or cluster (depends on volume)
+  - Single-node: up to ~1M active time series
+  - Cluster (vminsert + vmselect + vmstorage): above 1M series, HA, horizontal scaling
+- [ ] Data ingestion: Prometheus remote_write from OTel Collector
+- [ ] Compatibility: PromQL queries from Grafana, existing dashboards work without changes
+- [ ] vmalert for rule evaluation (recording rules + alerting rules) → Alertmanager
+- [ ] vmagent as optional scrape component (if pull from VMs without OTel Collector is needed)
 
-#### Ключевые вопросы (VictoriaMetrics)
+#### Key Questions (VictoriaMetrics)
 
-- [ ] Ожидаемый объём active time series? (определяет single-node vs. cluster)
-- [ ] Нужен ли vmagent отдельно или OTel Collector полностью заменяет его для scrape?
-- [ ] Deduplication при HA-конфигурации (два Collector пишут одни метрики)?
+- [ ] Expected volume of active time series? (determines single-node vs. cluster)
+- [ ] Is vmagent needed separately or does OTel Collector fully replace it for scraping?
+- [ ] Deduplication in HA configuration (two Collectors writing the same metrics)?
 
-### 4.3 Tempo / Jaeger — выбор trace-бэкенда
+### 4.3 Tempo / Jaeger — Trace Backend Selection
 
-| Критерий | Tempo | Jaeger |
+| Criterion | Tempo | Jaeger |
 |---|---|---|
-| Storage | Object storage (S3/MinIO) — дёшево для больших объёмов | Elasticsearch/Cassandra/ClickHouse — сложнее, но гибче |
-| Поиск | По trace ID; Tag-based search через Tempo + search backend | Полноценный поиск по tags из коробки |
-| Grafana-интеграция | Нативная (TraceQL) | Через data source plugin |
-| Зрелость | Относительно молодой | Зрелый, CNCF graduated |
-| Operational complexity | Низкая (stateless + object storage) | Средняя (зависит от storage backend) |
+| Storage | Object storage (S3/MinIO) — cost-effective for large volumes | Elasticsearch/Cassandra/ClickHouse — more complex but flexible |
+| Search | By trace ID; tag-based search via Tempo + search backend | Full tag-based search out of the box |
+| Grafana integration | Native (TraceQL) | Via data source plugin |
+| Maturity | Relatively young | Mature, CNCF graduated |
+| Operational complexity | Low (stateless + object storage) | Medium (depends on storage backend) |
 
-#### Ключевые вопросы (Traces)
+#### Key Questions (Traces)
 
-- [ ] Tempo vs. Jaeger — какой предпочтительнее? (Tempo проще в эксплуатации, Jaeger богаче по поиску)
-- [ ] Есть ли объектное хранилище (S3-compatible, MinIO) для Tempo?
-- [ ] Если Jaeger — какой storage backend? (ClickHouse рекомендуется для self-hosted)
+- [ ] Tempo vs. Jaeger — which is preferred? (Tempo is simpler to operate, Jaeger has richer search)
+- [ ] Is object storage available (S3-compatible, MinIO) for Tempo?
+- [ ] If Jaeger — which storage backend? (ClickHouse recommended for self-hosted)
 
-### 4.4 OpenSearch — логи
+### 4.4 OpenSearch — Logs
 
-- [ ] Приём логов через OTLP (OTel Collector → OpenSearch exporter или data prepper)
+- [ ] Log ingestion via OTLP (OTel Collector → OpenSearch exporter or Data Prepper)
 - [ ] Index lifecycle management: hot → warm → cold → delete
-- [ ] Index-per-service или index-per-day стратегия (зависит от объёма)
-- [ ] Интеграция с Grafana через OpenSearch data source (для trace ↔ log correlation)
-- [ ] OpenSearch Dashboards для аналитики и ad-hoc поиска
+- [ ] Index-per-service or index-per-day strategy (depends on volume)
+- [ ] Integration with Grafana via OpenSearch data source (for trace ↔ log correlation)
+- [ ] OpenSearch Dashboards for analytics and ad-hoc search
 
-#### Ключевые вопросы (OpenSearch)
+#### Key Questions (OpenSearch)
 
-- [ ] Есть ли уже OpenSearch-кластер или нужно поднимать с нуля?
-- [ ] Ожидаемый объём логов в день (GB/день)?
-- [ ] Нужен ли Data Prepper (OpenSearch ingestion pipeline) или прямой экспорт из OTel Collector?
+- [ ] Is there an existing OpenSearch cluster or does one need to be deployed from scratch?
+- [ ] Expected log volume per day (GB/day)?
+- [ ] Is Data Prepper (OpenSearch ingestion pipeline) needed or is direct export from OTel Collector sufficient?
 
-### 4.5 Retention-политика
+### 4.5 Retention Policy
 
-| Сигнал | Hot (быстрый доступ) | Warm/Cold | Примечание |
+| Signal | Hot (fast access) | Warm/Cold | Notes |
 |---|---|---|---|
-| **Metrics** | 30 дней (full resolution) | 90–365 дней (downsampled) | VictoriaMetrics: встроенный downsampling, `-retentionPeriod` |
-| **Traces** | 7–14 дней | 30 дней (object storage) | Для Tempo — автоматическая ротация в object storage |
-| **Logs** | 14–30 дней | 60–90 дней (warm/cold tier) | OpenSearch ISM policy для автоматической ротации |
-| **Profiles** | 7 дней | 14 дней | Профили объёмные, оперативная ценность коротка |
+| **Metrics** | 30 days (full resolution) | 90–365 days (downsampled) | VictoriaMetrics: built-in downsampling, `-retentionPeriod` |
+| **Traces** | 7–14 days | 30 days (object storage) | For Tempo — automatic rotation to object storage |
+| **Logs** | 14–30 days | 60–90 days (warm/cold tier) | OpenSearch ISM policy for automatic rotation |
+| **Profiles** | 7 days | 14 days | Profiles are large, operational value is short-lived |
 
-- [ ] Retention должна быть **управляемой**: настраиваемая через конфигурацию без изменения кода/инфраструктуры
-- [ ] Retention-политики разные по окружениям (prod — дольше, staging/dev — короче)
-- [ ] Мониторинг объёма хранимых данных и алерты на превышение квот
+- [ ] Retention must be **configurable**: adjustable via configuration without code/infrastructure changes
+- [ ] Different retention policies per environment (prod — longer, staging/dev — shorter)
+- [ ] Monitor stored data volume and alert on quota exceedance
 
 ---
 
@@ -325,49 +325,49 @@ Exporters:
 
 ### 5.1 TLS
 
-- [ ] Шифрование трафика между всеми компонентами:
-  - OTel Java Agent → Collector (OTLP gRPC/HTTP с TLS)
+- [ ] Encrypt traffic between all components:
+  - OTel Java Agent → Collector (OTLP gRPC/HTTP with TLS)
   - Collector Agent → Collector Gateway (mTLS)
   - Collector → VictoriaMetrics, Tempo/Jaeger, OpenSearch (TLS)
   - OpAMP Supervisor → OpAMP Server (TLS)
-- [ ] Автоматическая ротация сертификатов (cert-manager в OpenShift, Vault или PKI для VM)
+- [ ] Automatic certificate rotation (cert-manager in OpenShift, Vault or PKI for VMs)
 
 ### 5.2 RBAC
 
-- [ ] **Grafana RBAC**: разграничение доступа к дашбордам и данным по командам/ролям
-  - Developers: доступ к данным своих сервисов
-  - SRE: полный доступ ко всем данным
-  - Support: read-only доступ к дашбордам и алертам
-  - Management: доступ к SLO/SLI-дашбордам
-- [ ] **OpenSearch Security**: role-based доступ к индексам логов (по namespace/команде)
-- [ ] **VictoriaMetrics**: multi-tenancy через vmauth или label-based access control
-- [ ] **OTel Collector Gateway**: аутентификация входящих соединений (mTLS или bearer token)
+- [ ] **Grafana RBAC**: access control for dashboards and data by team/role
+  - Developers: access to their own services' data
+  - SRE: full access to all data
+  - Support: read-only access to dashboards and alerts
+  - Management: access to SLO/SLI dashboards
+- [ ] **OpenSearch Security**: role-based access to log indices (by namespace/team)
+- [ ] **VictoriaMetrics**: multi-tenancy via vmauth or label-based access control
+- [ ] **OTel Collector Gateway**: authentication for incoming connections (mTLS or bearer token)
 
-### 5.3 Обнаружение утечек PII
+### 5.3 PII Leak Detection
 
-- [ ] **PII detection pipeline** в OTel Collector:
-  - Regex-based обнаружение: email, телефоны, ИНН, паспорт, номера карт
-  - Маскирование/удаление обнаруженных PII в span attributes и log body
-  - Реализация через `transform` processor с regexp-правилами
-- [ ] **Мониторинг PII-утечек**:
-  - Метрика количества замаскированных PII-полей (по типу, по сервису)
-  - Алерт при аномальном всплеске PII-обнаружений (потенциальная регрессия в коде)
-  - Периодический аудит: sample-проверка данных в бэкендах на наличие пропущенных PII
-- [ ] **Конфигурируемые правила**: список паттернов PII управляется централизованно (через OpAMP или ConfigMap)
-- [ ] **Allowlist/denylist** для span attributes и log fields
+- [ ] **PII detection pipeline** in OTel Collector:
+  - Regex-based detection: email, phone numbers, national IDs, passport numbers, card numbers
+  - Mask/remove detected PII in span attributes and log body
+  - Implementation via `transform` processor with regexp rules
+- [ ] **PII leak monitoring**:
+  - Metric for the number of masked PII fields (by type, by service)
+  - Alert on anomalous spike in PII detections (potential code regression)
+  - Periodic audit: sample-check data in backends for missed PII
+- [ ] **Configurable rules**: PII pattern list managed centrally (via OpAMP or ConfigMap)
+- [ ] **Allowlist/denylist** for span attributes and log fields
 
-### 5.4 Ключевые вопросы
+### 5.4 Key Questions
 
-- [ ] Есть ли PKI / cert-manager / Vault для управления сертификатами?
-- [ ] Конкретный перечень PII-паттернов для маскирования (зависит от домена)
-- [ ] Нужен ли audit log для доступа к observability-данным?
-- [ ] Интеграция аутентификации с существующим IdP (LDAP, OIDC)?
+- [ ] Is PKI / cert-manager / Vault available for certificate management?
+- [ ] Specific list of PII patterns to mask (domain-dependent)
+- [ ] Is an audit log required for access to observability data?
+- [ ] Authentication integration with existing IdP (LDAP, OIDC)?
 
 ---
 
 ## 6. Alerting
 
-### 6.1 Архитектура алертинга
+### 6.1 Alerting Architecture
 
 ```
 VictoriaMetrics (vmalert)
@@ -379,7 +379,7 @@ VictoriaMetrics (vmalert)
   Alertmanager
         │
         ├── Deduplication, grouping, silencing
-        ├── Routing по severity и команде
+        ├── Routing by severity and team
         │
         ▼
   Notification channels (Slack, PagerDuty, OpsGenie, email)
@@ -387,164 +387,164 @@ VictoriaMetrics (vmalert)
 
 ### 6.2 SLO-Based Alerting
 
-- [ ] Определение SLI для каждого сервиса:
-  - **Availability**: % успешных запросов (HTTP 2xx/3xx)
-  - **Latency**: % запросов быстрее target (p99 < X ms)
-  - **Throughput**: RPS в пределах ожидаемого диапазона
+- [ ] Define SLIs for each service:
+  - **Availability**: % of successful requests (HTTP 2xx/3xx)
+  - **Latency**: % of requests faster than target (p99 < X ms)
+  - **Throughput**: RPS within expected range
 - [ ] Burn-rate alerting (Google SRE model):
-  - Fast burn: 2% error budget за 1 час → page
-  - Slow burn: 5% error budget за 6 часов → ticket
-  - Пример: `1 - (rate(http_requests_total{status=~"5.."}[1h]) / rate(http_requests_total[1h])) < SLO`
-- [ ] SLO-дашборды: error budget remaining, burn rate, SLI trends
+  - Fast burn: 2% error budget in 1 hour → page
+  - Slow burn: 5% error budget in 6 hours → ticket
+  - Example: `1 - (rate(http_requests_total{status=~"5.."}[1h]) / rate(http_requests_total[1h])) < SLO`
+- [ ] SLO dashboards: error budget remaining, burn rate, SLI trends
 
-### 6.3 Инфраструктурные алерты
+### 6.3 Infrastructure Alerts
 
 - [ ] **VM**: disk usage > 85%, CPU sustained > 90%, memory < 10% free, process down
 - [ ] **Oracle DB**: tablespace > 80%, blocked sessions > N, long queries > X min
-- [ ] **SSL**: certificate expiry < 30 / 14 / 7 дней (ssl_exporter + blackbox_exporter)
+- [ ] **SSL**: certificate expiry < 30 / 14 / 7 days (ssl_exporter + blackbox_exporter)
 - [ ] **Blackbox**: endpoint down > 2 min, latency > threshold
 - [ ] **OTel Collector**: queue overflow, export errors, dropped data
 
-### 6.4 Ключевые вопросы
+### 6.4 Key Questions
 
-- [ ] Какие notification channels нужны? (Slack, PagerDuty, OpsGenie, email, MS Teams?)
-- [ ] Есть ли определённые SLO/SLI для существующих сервисов или нужно определить с нуля?
-- [ ] Нужна ли on-call ротация через Alertmanager или используется внешняя система?
-- [ ] Разделение алертов по severity: critical (page) / warning (ticket) / info (dashboard)?
+- [ ] Which notification channels are needed? (Slack, PagerDuty, OpsGenie, email, MS Teams?)
+- [ ] Are there existing SLOs/SLIs for current services or do they need to be defined from scratch?
+- [ ] Is on-call rotation managed through Alertmanager or via an external system?
+- [ ] Alert severity breakdown: critical (page) / warning (ticket) / info (dashboard)?
 
 ---
 
-## 7. Пользовательский опыт (Developer Experience)
+## 7. User Experience (Developer Experience)
 
-### 7.1 Для разработчиков
+### 7.1 For Developers
 
-- [ ] **Zero-code start**: OTel Java Agent автоматически инструментирует HTTP, gRPC, JDBC, Kafka, JMS
-- [ ] **Custom instrumentation**: SDK-библиотеки для кастомных спанов и метрик (internal starter/BOM)
-- [ ] **Onboarding**: документация «как подключить tracing к своему сервису» (< 30 мин)
-- [ ] **Local dev**: возможность видеть трейсы локально (Jaeger all-in-one / OTLP → console exporter)
-- [ ] **Grafana-дашборды**: шаблон «Service Overview» для каждого сервиса:
-  - RED-метрики (rate, errors, duration)
+- [ ] **Zero-code start**: OTel Java Agent automatically instruments HTTP, gRPC, JDBC, Kafka, JMS
+- [ ] **Custom instrumentation**: SDK libraries for custom spans and metrics (internal starter/BOM)
+- [ ] **Onboarding**: documentation "how to add tracing to your service" (< 30 min)
+- [ ] **Local dev**: ability to view traces locally (Jaeger all-in-one / OTLP → console exporter)
+- [ ] **Grafana dashboards**: "Service Overview" template for each service:
+  - RED metrics (rate, errors, duration)
   - JVM runtime (heap, GC, threads)
   - Downstream dependencies
-  - Recent traces с ошибками
+  - Recent traces with errors
 
-### 7.2 Для поддержки (L2/L3 support)
+### 7.2 For Support (L2/L3)
 
-- [ ] **Incident investigation flow**: алерт → дашборд → трейсы → логи (единый UI в Grafana)
-- [ ] **Trace search**: поиск трейсов по correlation ID, user ID, request parameters
-- [ ] **Log search**: полнотекстовый поиск в OpenSearch Dashboards
-- [ ] **Runbooks**: ссылки из алертов на инструкции по диагностике
+- [ ] **Incident investigation flow**: alert → dashboard → traces → logs (single UI in Grafana)
+- [ ] **Trace search**: search traces by correlation ID, user ID, request parameters
+- [ ] **Log search**: full-text search in OpenSearch Dashboards
+- [ ] **Runbooks**: links from alerts to diagnostic instructions
 
-### 7.3 Для SRE
+### 7.3 For SRE
 
-- [ ] **Service map / dependency graph** на основе trace data
-- [ ] **Cross-service trace exploration** с фильтрацией по атрибутам
-- [ ] **Корреляция**: trace → logs → metrics в одном UI (Grafana Explore)
-- [ ] **SLO dashboard**: burn rate, error budget, SLI trends по всей платформе
-- [ ] **Capacity planning**: метрики объёма телеметрии, storage usage, прогноз роста
-- [ ] **Collector fleet management**: OpAMP UI — статус агентов, версии, конфигурации
-- [ ] **Toil reduction**: automated runbook suggestions, anomaly detection (фаза 2+)
+- [ ] **Service map / dependency graph** based on trace data
+- [ ] **Cross-service trace exploration** with attribute filtering
+- [ ] **Correlation**: trace → logs → metrics in a single UI (Grafana Explore)
+- [ ] **SLO dashboard**: burn rate, error budget, SLI trends across the platform
+- [ ] **Capacity planning**: telemetry volume metrics, storage usage, growth forecast
+- [ ] **Collector fleet management**: OpAMP UI — agent status, versions, configurations
+- [ ] **Toil reduction**: automated runbook suggestions, anomaly detection (phase 2+)
 
-### 7.4 Ключевые вопросы
+### 7.4 Key Questions
 
-- [ ] Нужен ли shared internal library (Spring Boot starter) для стандартизации инструментации?
-- [ ] Как интегрировать OTel Java Agent в CI/CD и OpenShift deployment pipeline?
-- [ ] Требуется ли обучение команд? В каком формате (workshop, docs, видео)?
-- [ ] Есть ли correlation ID / request ID, который проходит через все сервисы?
+- [ ] Is a shared internal library (Spring Boot starter) needed to standardize instrumentation?
+- [ ] How to integrate OTel Java Agent into CI/CD and OpenShift deployment pipeline?
+- [ ] Is team training required? In what format (workshop, docs, video)?
+- [ ] Is there a correlation ID / request ID that passes through all services?
 
 ---
 
-## 8. Фазы внедрения (предварительно)
+## 8. Rollout Phases (Preliminary)
 
-> Точный план реализации будет составлен отдельно на основании утверждённых требований.
+> A detailed implementation plan will be prepared separately based on approved requirements.
 
-### Фаза 0 — Инфраструктура и пилот (~ 3–4 недели)
+### Phase 0 — Infrastructure and Pilot (~ 3–4 weeks)
 
-- VictoriaMetrics: deployment, импорт существующих recording/alerting rules
-- OTel Collector: deployment на 2–3 VM (systemd) и в 1–2 OpenShift namespaces
-- OpAMP Server: базовая настройка, подключение пилотных Collector
-- Миграция scrape экспортёров (node, ssl, process, oracledb, blackbox) с Prometheus на OTel Collector
-- Grafana: подключение VictoriaMetrics data source, проверка существующих дашбордов
+- VictoriaMetrics: deployment, import existing recording/alerting rules
+- OTel Collector: deployment on 2–3 VMs (systemd) and in 1–2 OpenShift namespaces
+- OpAMP Server: basic setup, connect pilot Collectors
+- Migrate exporter scraping (node, ssl, process, oracledb, blackbox) from Prometheus to OTel Collector
+- Grafana: connect VictoriaMetrics data source, verify existing dashboards
 
-### Фаза 1 — Трассировка + логи (~ 4–6 недель)
+### Phase 1 — Tracing + Logs (~ 4–6 weeks)
 
-- Tempo или Jaeger: deployment
-- Auto-instrumentation 3–5 пилотных сервисов в OpenShift (OTel Java Agent)
-- Context propagation через HTTP, gRPC, message broker
+- Tempo or Jaeger: deployment
+- Auto-instrumentation of 3–5 pilot services in OpenShift (OTel Java Agent)
+- Context propagation across HTTP, gRPC, message broker
 - OpenSearch: deployment, OTel Collector log pipeline
-- Trace ↔ log correlation (trace_id в MDC)
-- Базовые дашборды: Service Overview, trace explorer
+- Trace ↔ log correlation (trace_id in MDC)
+- Basic dashboards: Service Overview, trace explorer
 
-### Фаза 2 — Масштабирование (~ 4–8 недель)
+### Phase 2 — Scale-Out (~ 4–8 weeks)
 
-- Rollout OTel Agent на все сервисы в OpenShift
-- Rollout OTel Collector на все VM
-- OpAMP: полное управление конфигурациями fleet'а
-- Tail-based sampling на gateway
+- Roll out OTel Agent to all services in OpenShift
+- Roll out OTel Collector to all VMs
+- OpAMP: full fleet configuration management
+- Tail-based sampling on gateway
 - PII detection/masking pipeline
 - SLO-based alerting (vmalert + Alertmanager)
-- Миграция логов со Splunk → OpenSearch (постепенно по сервисам)
+- Log migration from Splunk → OpenSearch (gradual, per-service)
 
-### Фаза 3 — Зрелость (ongoing)
+### Phase 3 — Maturity (ongoing)
 
 - Continuous profiling (Pyroscope)
-- Service map и dependency analysis
+- Service map and dependency analysis
 - Advanced anomaly detection
-- Capacity optimization и cost monitoring
-- Обучение и документация
+- Capacity optimization and cost monitoring
+- Training and documentation
 
 ---
 
-## 9. Нефункциональные требования
+## 9. Non-Functional Requirements
 
-| Требование | Значение | Примечание |
+| Requirement | Target | Notes |
 |---|---|---|
-| **Overhead на приложение** | < 3% CPU, < 50 MB RAM | OTel Java Agent overhead |
-| **Latency добавленная** | < 1 ms на span export | Async export, batch processing |
-| **Доступность Collector gateway** | 99.9% | HA: минимум 2 реплики |
-| **Доступность бэкендов** | 99.9% | VictoriaMetrics, Tempo/Jaeger, OpenSearch |
-| **Потеря данных** | < 0.1% при нормальной работе | Retry + persistent queue в Collector |
-| **Время от деплоя до видимости** | < 2 минут | Метрики/трейсы доступны в Grafana |
-| **Масштабируемость** | До 100+ сервисов | Горизонтальное масштабирование gateway и бэкендов |
-| **Config rollout (OpAMP)** | < 5 минут на весь fleet | С canary strategy |
-| **PII masking coverage** | 100% spans/logs проходят через transform | Без bypass |
+| **Application overhead** | < 3% CPU, < 50 MB RAM | OTel Java Agent overhead |
+| **Added latency** | < 1 ms per span export | Async export, batch processing |
+| **Collector gateway availability** | 99.9% | HA: minimum 2 replicas |
+| **Backend availability** | 99.9% | VictoriaMetrics, Tempo/Jaeger, OpenSearch |
+| **Data loss** | < 0.1% under normal operation | Retry + persistent queue in Collector |
+| **Deploy-to-visibility time** | < 2 minutes | Metrics/traces available in Grafana |
+| **Scalability** | Up to 100+ services | Horizontal scaling of gateway and backends |
+| **Config rollout (OpAMP)** | < 5 minutes across entire fleet | With canary strategy |
+| **PII masking coverage** | 100% of spans/logs pass through transform | No bypass |
 
 ---
 
-## 10. Открытые вопросы и решения
+## 10. Open Questions and Decisions
 
-> Эти вопросы должны быть закрыты до начала реализации.
+> These questions must be resolved before implementation begins.
 
-| # | Вопрос | Варианты | Решение |
+| # | Question | Options | Decision |
 |---|---|---|---|
-| Q1 | Trace-бэкенд | Tempo (проще) / Jaeger (зрелее) | **TBD** |
+| Q1 | Trace backend | Tempo (simpler) / Jaeger (more mature) | **TBD** |
 | Q2 | OpAMP Server | BindPlane OP / custom / OpAMP-go reference impl | **TBD** |
 | Q3 | VictoriaMetrics mode | Single-node / Cluster | **TBD** |
-| Q4 | OpenSearch — новый или существующий | Новый кластер / есть существующий | **TBD** |
-| Q5 | Формат пропагации контекста | W3C TraceContext / B3 | **TBD** |
-| Q6 | Service discovery для VM экспортёров | file_sd / DNS-SD / Consul | **TBD** |
-| Q7 | OTel Operator для OpenShift | Да (auto-inject) / Нет (ручной) | **TBD** |
-| Q8 | Дистрибутив Collector | otelcol-contrib / custom build | **TBD** |
-| Q9 | Объектное хранилище для Tempo | S3 / MinIO / нет (Jaeger + ClickHouse) | **TBD** |
-| Q10 | Notification channels для алертов | Slack / PagerDuty / OpsGenie / email / Teams | **TBD** |
-| Q11 | IdP для RBAC | LDAP / OIDC / другое | **TBD** |
-| Q12 | Миграция Splunk → OpenSearch | Постепенная / big bang / dual-write | **TBD** |
+| Q4 | OpenSearch — new or existing | New cluster / existing cluster | **TBD** |
+| Q5 | Context propagation format | W3C TraceContext / B3 | **TBD** |
+| Q6 | Service discovery for VM exporters | file_sd / DNS-SD / Consul | **TBD** |
+| Q7 | OTel Operator for OpenShift | Yes (auto-inject) / No (manual) | **TBD** |
+| Q8 | Collector distribution | otelcol-contrib / custom build | **TBD** |
+| Q9 | Object storage for Tempo | S3 / MinIO / none (Jaeger + ClickHouse) | **TBD** |
+| Q10 | Notification channels for alerts | Slack / PagerDuty / OpsGenie / email / Teams | **TBD** |
+| Q11 | IdP for RBAC | LDAP / OIDC / other | **TBD** |
+| Q12 | Splunk → OpenSearch migration | Gradual / big bang / dual-write | **TBD** |
 
 ---
 
-## Приложение A: Глоссарий
+## Appendix A: Glossary
 
-| Термин | Описание |
+| Term | Description |
 |---|---|
-| **OTel** | OpenTelemetry — CNCF-проект, открытый стандарт для сбора телеметрии |
-| **Collector** | OTel Collector — агент/gateway для приёма, обработки и экспорта телеметрии |
-| **OpAMP** | Open Agent Management Protocol — протокол для централизованного управления агентами (Collector) |
-| **Span** | Единица работы в распределённом трейсе (вызов метода, HTTP-запрос, SQL-запрос) |
-| **RED** | Rate, Errors, Duration — ключевые метрики для микросервисов |
-| **MDC** | Mapped Diagnostic Context — механизм Log4j2/Logback для добавления контекста в логи |
-| **SLO/SLI** | Service Level Objective / Indicator — целевые показатели качества сервиса |
-| **Burn rate** | Скорость расходования error budget — основа SLO-based alerting |
-| **Tail-based sampling** | Решение о сохранении трейса после завершения всех спанов (по error, latency) |
-| **VictoriaMetrics** | OSS TSDB, совместимая с Prometheus, оптимизированная для high cardinality и long-term storage |
-| **OpenSearch** | OSS fork Elasticsearch для логов и полнотекстового поиска |
-| **Pyroscope** | Continuous profiling платформа (Grafana), поддержка JVM |
+| **OTel** | OpenTelemetry — CNCF project, open standard for telemetry collection |
+| **Collector** | OTel Collector — agent/gateway for receiving, processing, and exporting telemetry |
+| **OpAMP** | Open Agent Management Protocol — protocol for centralized agent (Collector) management |
+| **Span** | A unit of work in a distributed trace (method call, HTTP request, SQL query) |
+| **RED** | Rate, Errors, Duration — key metrics for microservices |
+| **MDC** | Mapped Diagnostic Context — Log4j2/Logback mechanism for adding context to logs |
+| **SLO/SLI** | Service Level Objective / Indicator — target service quality metrics |
+| **Burn rate** | Rate of error budget consumption — the basis of SLO-based alerting |
+| **Tail-based sampling** | Decision to retain a trace is made after all spans complete (based on error, latency) |
+| **VictoriaMetrics** | OSS TSDB, Prometheus-compatible, optimized for high cardinality and long-term storage |
+| **OpenSearch** | OSS Elasticsearch fork for logs and full-text search |
+| **Pyroscope** | Continuous profiling platform (Grafana), JVM support |
