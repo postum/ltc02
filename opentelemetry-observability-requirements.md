@@ -262,19 +262,26 @@ Exporters:
 
 ### 4.2 VictoriaMetrics — Architecture
 
-- [ ] **Deployment mode**: single-node or cluster (depends on volume)
-  - Single-node: up to ~1M active time series
-  - Cluster (vminsert + vmselect + vmstorage): above 1M series, HA, horizontal scaling
-- [ ] Data ingestion: Prometheus remote_write from OTel Collector
-- [ ] Compatibility: PromQL queries from Grafana, existing dashboards work without changes
+- [x] **Deployment mode**: Cluster (vminsert + vmselect + vmstorage)
+  - Horizontal scaling: each component scales independently
+  - HA: multiple replicas of vminsert and vmselect, replication factor for vmstorage
+  - vminsert: stateless, accepts remote_write, distributes data across vmstorage nodes
+  - vmselect: stateless, executes PromQL queries across all vmstorage nodes
+  - vmstorage: stateful, stores time series data on local disk
+- [ ] **vmauth**: routing proxy in front of vminsert/vmselect for load balancing, authentication, and tenant routing
+- [ ] Data ingestion: Prometheus remote_write from OTel Collector → vminsert
+- [ ] Compatibility: PromQL queries from Grafana → vmselect, existing dashboards work without changes
 - [ ] vmalert for rule evaluation (recording rules + alerting rules) → Alertmanager
 - [ ] vmagent as optional scrape component (if pull from VMs without OTel Collector is needed)
+- [ ] **Replication**: `-replicationFactor=2` on vminsert for data durability (writes to N vmstorage nodes)
+- [ ] **Deduplication**: `-dedup.minScrapeInterval` on vmselect to handle HA/replication duplicates
 
 #### Key Questions (VictoriaMetrics)
 
-- [ ] Expected volume of active time series? (determines single-node vs. cluster)
+- [ ] How many vmstorage nodes initially? (recommendation: minimum 3 for replication factor 2)
+- [ ] Storage capacity per vmstorage node? (depends on retention and active time series volume)
 - [ ] Is vmagent needed separately or does OTel Collector fully replace it for scraping?
-- [ ] Deduplication in HA configuration (two Collectors writing the same metrics)?
+- [ ] Deploy on OpenShift (StatefulSet) or on dedicated VMs?
 
 ### 4.3 Tempo / Jaeger — Trace Backend Selection
 
@@ -519,7 +526,7 @@ VictoriaMetrics (vmalert)
 |---|---|---|---|
 | Q1 | Trace backend | Tempo (simpler) / Jaeger (more mature) | **TBD** |
 | Q2 | OpAMP Server | BindPlane OP / custom / OpAMP-go reference impl | **TBD** |
-| Q3 | VictoriaMetrics mode | Single-node / Cluster | **TBD** |
+| Q3 | VictoriaMetrics: number of vmstorage nodes | 3 / 5 / more | **TBD** |
 | Q4 | OpenSearch — new or existing | New cluster / existing cluster | **TBD** |
 | Q5 | Context propagation format | W3C TraceContext / B3 | **TBD** |
 | Q6 | Service discovery for VM exporters | file_sd / DNS-SD / Consul | **TBD** |
